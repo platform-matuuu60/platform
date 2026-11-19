@@ -60,3 +60,28 @@ output "hello_api_url" {
   description = "Base URL of the hello-api as served by Floci."
   value       = "http://${module.hello_api.api_id}.execute-api.localhost.floci.io:4566"
 }
+
+# Platform base: bucket where CI publishes function packages for ServerlessApps.
+# It was first created by Crossplane during phase 2 and is adopted here.
+import {
+  to = aws_s3_bucket.artifacts
+  id = "shopco-artifacts"
+}
+
+resource "aws_s3_bucket" "artifacts" {
+  bucket = "shopco-artifacts"
+  tags   = local.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "artifacts" {
+  bucket                  = aws_s3_bucket.artifacts.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+output "artifacts_bucket" {
+  description = "Bucket for function packages."
+  value       = aws_s3_bucket.artifacts.bucket
+}
