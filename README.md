@@ -84,6 +84,15 @@ spec:
 ./tests/smoke-serverlessapp.sh team-shop hello-api   # PASS: ... -> 200
 ```
 
+### Developer portal (Backstage)
+
+Source and image live in [backstage](https://github.com/platform-matuuu60/backstage); `kubernetes/backstage` deploys it with a CNPG database at `https://backstage.cloud-it.com.ar`, signing in through Keycloak.
+
+```bash
+kubectl -n keycloak port-forward svc/keycloak 18080:8080 &
+./scripts/keycloak-bootstrap-idp.sh   # realm idp, client backstage, SealedSecret backstage-auth
+```
+
 Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](docs/floci-vs-aws.md).
 
 ## Roadmap
@@ -92,7 +101,7 @@ Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](do
 - [x] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
 - [ ] Phase 3: Public apps via Gateway API + TLS + CloudFront
 - [ ] Phase 4: CI on in-cluster runners + security gate
-- [ ] Phase 5: Backstage portal and templates
+- [ ] Phase 5: Backstage portal and templates (in progress: portal deployed, templates next)
 - [ ] Phase 6: Observability, autoscaling, policies
 - [ ] Phase 7: Real AWS session
 - [ ] Phase 8: On-prem target and container templates
