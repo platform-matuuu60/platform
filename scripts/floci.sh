@@ -7,6 +7,9 @@ IMAGE="${FLOCI_IMAGE:-floci/floci:2.5.0}"
 NAME="floci"
 NETWORK="floci"
 VOLUME="floci-data"
+# Private gateway IP of the floci Docker network. Pods reach the host through it;
+# it is not routed from the internet.
+CLUSTER_BIND="${FLOCI_CLUSTER_BIND:-172.18.0.1}"
 
 up() {
   docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK" >/dev/null
@@ -20,6 +23,7 @@ up() {
       --restart unless-stopped \
       --network "$NETWORK" \
       -p 127.0.0.1:4566:4566 \
+      -p "$CLUSTER_BIND":4566:4566 \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "$VOLUME":/app/data \
       -e FLOCI_HOSTNAME="$NAME" \
@@ -39,6 +43,12 @@ down() {
   echo "Floci stopped (data kept in volume $VOLUME)"
 }
 
+recreate() {
+  # Apply changed run options; state survives in the data volume.
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  up
+}
+
 status() {
   docker ps --filter "name=^${NAME}$" --format '{{.Names}} {{.Image}} {{.Status}} {{.Ports}}'
 }
@@ -46,6 +56,7 @@ status() {
 case "${1:-}" in
   up) up ;;
   down) down ;;
+  recreate) recreate ;;
   status) status ;;
-  *) echo "usage: $0 {up|down|status}" >&2; exit 2 ;;
+  *) echo "usage: $0 {up|down|recreate|status}" >&2; exit 2 ;;
 esac
