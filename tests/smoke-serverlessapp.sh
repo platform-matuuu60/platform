@@ -21,10 +21,10 @@ fi
 
 body_file="$(mktemp)"
 trap 'rm -f "$body_file"' EXIT
-status="$(curl -s -o "$body_file" -w '%{http_code}' "${URL%/}/hello?name=shopco")"
+status="$(curl -s -o "$body_file" -w '%{http_code}' "${URL%/}/hello?name=idp")"
 body="$(cat "$body_file")"
 
-if [[ "$status" != "200" ]] || ! grep -q '"message": *"Hello, shopco!"' <<<"$body"; then
+if [[ "$status" != "200" ]] || ! grep -q '"message": *"Hello, idp!"' <<<"$body"; then
   echo "FAIL: $URL -> $status $body" >&2
   exit 1
 fi

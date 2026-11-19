@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: shopco-crossplane-config
+  name: idp-crossplane-config
   namespace: argocd
 spec:
   project: default
@@ -18,7 +18,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # CRDs come from the providers installed by shopco-crossplane-packages.
+      # CRDs come from the providers installed by idp-crossplane-packages.
       - SkipDryRunOnMissingResource=true
     retry:
       limit: 10

@@ -9,7 +9,7 @@ Teams need HTTP APIs without learning Lambda, API Gateway or IAM. The cluster al
 
 ## Decision
 
-- **One namespaced API, `ServerlessApp`** (`platform.shopco.internal/v1alpha1`). A team declares runtime, sizing and the artifact key; the platform composes an IAM role, the Lambda function, an HTTP API (integration, `$default` route and stage) and the invoke permission. The URL is reported in `status.url`.
+- **One namespaced API, `ServerlessApp`** (`platform.idp.internal/v1alpha1`). A team declares runtime, sizing and the artifact key; the platform composes an IAM role, the Lambda function, an HTTP API (integration, `$default` route and stage) and the invoke permission. The URL is reported in `status.url`.
 - **`spec.target` selects the `ClusterProviderConfig`** of the same name (`floci`, later `aws`). One Composition serves both targets; only the provider config differs.
 - **Composition functions**: `function-go-templating` renders the resources, `function-auto-ready` derives readiness. Resources reference each other by name (`roleRef`, `apiIdRef`, `integrationUriRef`, `targetRef`, `functionNameRef`).
 - **AWS names are prefixed with the namespace** (`team-shop-hello-api`) because AWS names are account-wide while Kubernetes names are per namespace.

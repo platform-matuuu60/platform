@@ -16,7 +16,7 @@ locals {
   floci_endpoint = "http://127.0.0.1:4566"
 
   tags = {
-    project     = "shopco-platform"
+    project     = "idp-platform"
     environment = "local"
     managed-by  = "terraform"
   }
@@ -62,14 +62,8 @@ output "hello_api_url" {
 }
 
 # Platform base: bucket where CI publishes function packages for ServerlessApps.
-# It was first created by Crossplane during phase 2 and is adopted here.
-import {
-  to = aws_s3_bucket.artifacts
-  id = "shopco-artifacts"
-}
-
 resource "aws_s3_bucket" "artifacts" {
-  bucket = "shopco-artifacts"
+  bucket = "idp-artifacts"
   tags   = local.tags
 }
 

@@ -1,6 +1,6 @@
-# ShopCo Platform
+# IDP Platform
 
-Internal developer platform for **ShopCo**, a fictional e-commerce company. Every team used to ship differently: hand-made pipelines, infrastructure via tickets, and services nobody else could debug. This platform gives them one golden path from code to production.
+Internal developer platform: one golden path from code to production for any kind of app (serverless APIs, frontends, containers, WordPress). Developers ask for what they need; the platform provisions it, wires CI, and makes it observable.
 
 > Portfolio project. "AWS" runs locally on [Floci](https://github.com/floci-io/floci) at zero cost; the same infrastructure code targets real AWS.
 
@@ -55,7 +55,7 @@ Requirements: Docker, Terraform >= 1.9, curl.
 ./scripts/floci.sh up                      # Floci on 127.0.0.1:4566
 terraform -chdir=terraform/envs/local init
 terraform -chdir=terraform/envs/local apply
-./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, shopco!"}
+./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, idp!"}
 ```
 
 ### Platform API on the cluster
@@ -68,7 +68,7 @@ kubectl apply -f kubernetes/bootstrap/root.yaml    # ArgoCD syncs kubernetes/app
 Teams then request apps in the [gitops](https://github.com/platform-matuuu60/gitops) repo:
 
 ```yaml
-apiVersion: platform.shopco.internal/v1alpha1
+apiVersion: platform.idp.internal/v1alpha1
 kind: ServerlessApp
 metadata:
   name: hello-api
@@ -76,7 +76,7 @@ metadata:
 spec:
   target: floci
   artifact:
-    bucket: shopco-artifacts
+    bucket: idp-artifacts
     key: hello-api/<content-hash>.zip
 ```
 

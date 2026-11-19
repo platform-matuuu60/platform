@@ -1,10 +1,10 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: serverlessapps.platform.shopco.internal
+  name: serverlessapps.platform.idp.internal
 spec:
   scope: Namespaced
-  group: platform.shopco.internal
+  group: platform.idp.internal
   names:
     kind: ServerlessApp
     plural: serverlessapps

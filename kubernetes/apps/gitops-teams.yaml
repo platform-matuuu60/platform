@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: shopco-gitops-teams
+  name: idp-gitops-teams
   namespace: argocd
 spec:
   project: default

@@ -4,7 +4,7 @@ metadata:
   name: serverlessapp
 spec:
   compositeTypeRef:
-    apiVersion: platform.shopco.internal/v1alpha1
+    apiVersion: platform.idp.internal/v1alpha1
     kind: ServerlessApp
   mode: Pipeline
   pipeline:
@@ -171,7 +171,7 @@ spec:
             {{- end }}
             {{- if $apiId }}
             ---
-            apiVersion: platform.shopco.internal/v1alpha1
+            apiVersion: platform.idp.internal/v1alpha1
             kind: ServerlessApp
             status:
               apiId: {{ $apiId }}

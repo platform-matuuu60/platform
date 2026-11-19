@@ -5,7 +5,7 @@ set -euo pipefail
 
 SRC="${1:?source directory required}"
 APP="${2:?app name required}"
-BUCKET="${ARTIFACTS_BUCKET:-shopco-artifacts}"
+BUCKET="${ARTIFACTS_BUCKET:-idp-artifacts}"
 ENDPOINT="${AWS_ENDPOINT_URL:-http://127.0.0.1:4566}"
 
 workdir="$(mktemp -d)"

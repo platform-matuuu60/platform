@@ -1,8 +1,8 @@
-# App of apps for the ShopCo platform. Apply once: kubectl apply -f kubernetes/bootstrap/root.yaml
+# App of apps for the IDP platform. Apply once: kubectl apply -f kubernetes/bootstrap/root.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: shopco-platform
+  name: idp-platform
   namespace: argocd
 spec:
   project: default
