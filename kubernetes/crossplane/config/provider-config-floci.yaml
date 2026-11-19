@@ -1,0 +1,38 @@
+# Placeholder credentials: Floci maps static keys to its local root account.
+# They grant nothing outside the emulator. Real AWS uses a separate config.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: floci-credentials
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  credentials: |
+    [default]
+    aws_access_key_id = test
+    aws_secret_access_key = test
+---
+apiVersion: aws.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: floci
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: floci-credentials
+      key: credentials
+  endpoint:
+    # Every service the platform uses must be listed; unlisted services go to real AWS.
+    services: [apigatewayv2, iam, lambda, sts]
+    source: Custom
+    hostnameImmutable: true
+    url:
+      type: Static
+      static: http://floci.floci-system.svc.cluster.local:4566
+  skip_credentials_validation: true
+  skip_metadata_api_check: true
+  skip_region_validation: true
+  skip_requesting_account_id: true
+  s3_use_path_style: true

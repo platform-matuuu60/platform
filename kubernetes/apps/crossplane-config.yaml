@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopco-crossplane-config
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/platform-matuuu60/platform.git
+    targetRevision: main
+    path: kubernetes/crossplane/config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crossplane-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # CRDs come from the providers installed by shopco-crossplane-packages.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m

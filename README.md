@@ -36,6 +36,11 @@ terraform/
   modules/        # reusable modules, identical for every target
   envs/local/     # Floci
   envs/aws/       # real AWS
+kubernetes/
+  bootstrap/      # ArgoCD app of apps (applied once)
+  apps/           # ArgoCD Applications for platform components
+  floci/          # in-cluster Service for Floci
+  crossplane/     # providers, functions, ServerlessApp API
 examples/         # sample function code used by environments
 scripts/          # host tooling (Floci lifecycle)
 tests/            # smoke tests
@@ -53,12 +58,38 @@ terraform -chdir=terraform/envs/local apply
 ./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, shopco!"}
 ```
 
+### Platform API on the cluster
+
+```bash
+kubectl apply -f kubernetes/bootstrap/root.yaml    # ArgoCD syncs kubernetes/apps
+./scripts/publish-artifact.sh examples/hello-api/src hello-api   # prints the artifact key
+```
+
+Teams then request apps in the [gitops](https://github.com/platform-matuuu60/gitops) repo:
+
+```yaml
+apiVersion: platform.shopco.internal/v1alpha1
+kind: ServerlessApp
+metadata:
+  name: hello-api
+  namespace: team-shop
+spec:
+  target: floci
+  artifact:
+    bucket: shopco-artifacts
+    key: hello-api/<content-hash>.zip
+```
+
+```bash
+./tests/smoke-serverlessapp.sh team-shop hello-api   # PASS: ... -> 200
+```
+
 Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](docs/floci-vs-aws.md).
 
 ## Roadmap
 
 - [x] Phase 1: Terraform against Floci, a Lambda behind API Gateway reachable by URL
-- [ ] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
+- [x] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
 - [ ] Phase 3: Public apps via Gateway API + TLS + CloudFront
 - [ ] Phase 4: CI on in-cluster runners + security gate
 - [ ] Phase 5: Backstage portal and templates
