@@ -19,3 +19,4 @@ dist/
 # Local
 .env
 .DS_Store
+**/.build/
