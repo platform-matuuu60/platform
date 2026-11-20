@@ -1,0 +1,54 @@
+# Org-wide runner scale set "idp-k3s" (runs-on: idp-k3s). Runners are ephemeral pods:
+# one job per pod, no Docker daemon, no access to the Kubernetes API.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: idp-arc-runners
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    # GitHub App credential and network policy for the runner namespace.
+    - repoURL: https://github.com/platform-matuuu60/platform.git
+      targetRevision: main
+      path: kubernetes/arc-runners
+    - repoURL: ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set
+      targetRevision: 0.15.1
+      helm:
+        releaseName: idp-k3s
+        valuesObject:
+          githubConfigUrl: https://github.com/platform-matuuu60
+          githubConfigSecret: arc-github-app
+          runnerScaleSetName: idp-k3s
+          minRunners: 0
+          maxRunners: 2
+          controllerServiceAccount:
+            namespace: arc-systems
+            name: arc-controller-gha-rs-controller
+          template:
+            spec:
+              automountServiceAccountToken: false
+              containers:
+                - name: runner
+                  image: ghcr.io/actions/actions-runner:2.338.1
+                  command: ["/home/runner/run.sh"]
+                  resources:
+                    requests: { cpu: 250m, memory: 512Mi }
+                    limits: { memory: 2Gi }
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    capabilities: { drop: [ALL] }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
