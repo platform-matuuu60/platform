@@ -1,0 +1,21 @@
+# Only the AWS service providers the platform APIs use; each one runs its own pod.
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-iam
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-iam:v2.9.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-lambda
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-lambda:v2.9.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-apigatewayv2
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-apigatewayv2:v2.9.0

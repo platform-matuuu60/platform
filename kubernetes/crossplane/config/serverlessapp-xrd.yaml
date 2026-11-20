@@ -1,0 +1,71 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: serverlessapps.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: ServerlessApp
+    plural: serverlessapps
+  defaultCompositionRef:
+    name: serverlessapp
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: TARGET
+          type: string
+          jsonPath: .spec.target
+        - name: URL
+          type: string
+          jsonPath: .status.url
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              description: An HTTP API backed by a single function.
+              required:
+                - artifact
+              properties:
+                target:
+                  type: string
+                  description: Where the app runs. Maps to the ClusterProviderConfig of the same name.
+                  enum: [floci, aws]
+                  default: floci
+                runtime:
+                  type: string
+                  enum: [python3.12, python3.13, nodejs20.x, nodejs22.x]
+                  default: python3.12
+                handler:
+                  type: string
+                  default: handler.handler
+                memorySize:
+                  type: integer
+                  minimum: 128
+                  maximum: 1024
+                  default: 128
+                timeout:
+                  type: integer
+                  minimum: 1
+                  maximum: 60
+                  default: 10
+                artifact:
+                  type: object
+                  description: Function package published by CI to the artifacts bucket.
+                  required: [bucket, key]
+                  properties:
+                    bucket:
+                      type: string
+                    key:
+                      type: string
+            status:
+              type: object
+              properties:
+                apiId:
+                  type: string
+                url:
+                  type: string

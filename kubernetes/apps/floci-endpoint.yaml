@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: idp-floci-endpoint
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/platform-matuuu60/platform.git
+    targetRevision: main
+    path: kubernetes/floci
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: floci-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m

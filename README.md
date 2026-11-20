@@ -1,6 +1,6 @@
-# ShopCo Platform
+# IDP Platform
 
-Internal developer platform for **ShopCo**, a fictional e-commerce company. Every team used to ship differently: hand-made pipelines, infrastructure via tickets, and services nobody else could debug. This platform gives them one golden path from code to production.
+Internal developer platform: one golden path from code to production for any kind of app (serverless APIs, frontends, containers, WordPress). Developers ask for what they need; the platform provisions it, wires CI, and makes it observable.
 
 > Portfolio project. "AWS" runs locally on [Floci](https://github.com/floci-io/floci) at zero cost; the same infrastructure code targets real AWS.
 
@@ -36,6 +36,11 @@ terraform/
   modules/        # reusable modules, identical for every target
   envs/local/     # Floci
   envs/aws/       # real AWS
+kubernetes/
+  bootstrap/      # ArgoCD app of apps (applied once)
+  apps/           # ArgoCD Applications for platform components
+  floci/          # in-cluster Service for Floci
+  crossplane/     # providers, functions, ServerlessApp API
 examples/         # sample function code used by environments
 scripts/          # host tooling (Floci lifecycle)
 tests/            # smoke tests
@@ -50,7 +55,42 @@ Requirements: Docker, Terraform >= 1.9, curl.
 ./scripts/floci.sh up                      # Floci on 127.0.0.1:4566
 terraform -chdir=terraform/envs/local init
 terraform -chdir=terraform/envs/local apply
-./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, shopco!"}
+./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, idp!"}
+```
+
+### Platform API on the cluster
+
+```bash
+kubectl apply -f kubernetes/bootstrap/root.yaml    # ArgoCD syncs kubernetes/apps
+./scripts/publish-artifact.sh examples/hello-api/src hello-api   # prints the artifact key
+```
+
+Teams then request apps in the [gitops](https://github.com/platform-matuuu60/gitops) repo:
+
+```yaml
+apiVersion: platform.idp.internal/v1alpha1
+kind: ServerlessApp
+metadata:
+  name: hello-api
+  namespace: team-shop
+spec:
+  target: floci
+  artifact:
+    bucket: idp-artifacts
+    key: hello-api/<content-hash>.zip
+```
+
+```bash
+./tests/smoke-serverlessapp.sh team-shop hello-api   # PASS: ... -> 200
+```
+
+### Developer portal (Backstage)
+
+Source and image live in [backstage](https://github.com/platform-matuuu60/backstage); `kubernetes/backstage` deploys it with a CNPG database at `https://backstage.cloud-it.com.ar`, signing in through Keycloak.
+
+```bash
+kubectl -n keycloak port-forward svc/keycloak 18080:8080 &
+./scripts/keycloak-bootstrap-idp.sh   # realm idp, client backstage, SealedSecret backstage-auth
 ```
 
 Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](docs/floci-vs-aws.md).
@@ -58,10 +98,10 @@ Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](do
 ## Roadmap
 
 - [x] Phase 1: Terraform against Floci, a Lambda behind API Gateway reachable by URL
-- [ ] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
+- [x] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
 - [ ] Phase 3: Public apps via Gateway API + TLS + CloudFront
 - [ ] Phase 4: CI on in-cluster runners + security gate
-- [ ] Phase 5: Backstage portal and templates
+- [ ] Phase 5: Backstage portal and templates (in progress: portal deployed, templates next)
 - [ ] Phase 6: Observability, autoscaling, policies
 - [ ] Phase 7: Real AWS session
 - [ ] Phase 8: On-prem target and container templates

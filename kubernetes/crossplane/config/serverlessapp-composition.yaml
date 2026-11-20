@@ -1,0 +1,187 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: serverlessapp
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: ServerlessApp
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- /* AWS names are account-wide, so prefix them with the namespace. */}}
+            {{- $name := printf "%s-%s" $xr.metadata.namespace $xr.metadata.name }}
+            {{- $region := "us-east-1" }}
+            {{- $api := getComposedResource . "api" }}
+            {{- $apiId := "" }}
+            {{- $executionArn := "" }}
+            {{- if $api }}
+            {{- $apiId = dig "status" "atProvider" "id" "" $api }}
+            {{- $executionArn = dig "status" "atProvider" "executionArn" "" $api }}
+            {{- end }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: Role
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: role
+            spec:
+              forProvider:
+                assumeRolePolicy: |
+                  {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: RolePolicyAttachment
+            metadata:
+              name: {{ $name }}-basic-execution
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: basic-execution
+            spec:
+              forProvider:
+                policyArn: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+                roleRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: lambda.aws.m.upbound.io/v1beta1
+            kind: Function
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: function
+            spec:
+              forProvider:
+                region: {{ $region }}
+                runtime: {{ $spec.runtime }}
+                handler: {{ $spec.handler }}
+                memorySize: {{ $spec.memorySize }}
+                timeout: {{ $spec.timeout }}
+                s3Bucket: {{ $spec.artifact.bucket }}
+                s3Key: {{ $spec.artifact.key }}
+                roleRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: apigatewayv2.aws.m.upbound.io/v1beta1
+            kind: API
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: api
+            spec:
+              forProvider:
+                region: {{ $region }}
+                name: {{ $name }}
+                protocolType: HTTP
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: apigatewayv2.aws.m.upbound.io/v1beta1
+            kind: Integration
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: integration
+            spec:
+              forProvider:
+                region: {{ $region }}
+                apiIdRef:
+                  name: {{ $name }}
+                integrationType: AWS_PROXY
+                integrationUriRef:
+                  name: {{ $name }}
+                payloadFormatVersion: "2.0"
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: apigatewayv2.aws.m.upbound.io/v1beta1
+            kind: Route
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: route
+            spec:
+              forProvider:
+                region: {{ $region }}
+                apiIdRef:
+                  name: {{ $name }}
+                routeKey: $default
+                targetRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: apigatewayv2.aws.m.upbound.io/v1beta1
+            kind: Stage
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: stage
+                crossplane.io/external-name: $default
+            spec:
+              forProvider:
+                region: {{ $region }}
+                apiIdRef:
+                  name: {{ $name }}
+                autoDeploy: true
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- if $executionArn }}
+            ---
+            apiVersion: lambda.aws.m.upbound.io/v1beta1
+            kind: Permission
+            metadata:
+              name: {{ $name }}-api-invoke
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: api-invoke-permission
+            spec:
+              forProvider:
+                region: {{ $region }}
+                action: lambda:InvokeFunction
+                principal: apigateway.amazonaws.com
+                statementId: AllowApiGatewayInvoke
+                sourceArn: {{ $executionArn }}/*/*
+                functionNameRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- end }}
+            {{- if $apiId }}
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: ServerlessApp
+            status:
+              apiId: {{ $apiId }}
+              {{- if eq $spec.target "floci" }}
+              {{- /* Fidelity gap: Floci serves HTTP APIs on its own hostname (docs/floci-vs-aws.md). */}}
+              url: http://{{ $apiId }}.execute-api.localhost.floci.io:4566
+              {{- else }}
+              url: {{ dig "status" "atProvider" "apiEndpoint" "" $api }}
+              {{- end }}
+            {{- end }}
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready
