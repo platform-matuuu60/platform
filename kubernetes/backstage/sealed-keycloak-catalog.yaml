@@ -1,0 +1,15 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  creationTimestamp: null
+  name: backstage-keycloak-catalog
+  namespace: backstage
+spec:
+  encryptedData:
+    client-secret: AgAxk3r4PTknBfIWje8s86haJIMB1uN+vkuIx3x1kvaO2uNLmpYkXdb1Wvdox7DdsjPRNK3FPiEwPEtNNkom9iFMrpl2bYWE1pmxYhv//LxKrfY/rVIIVsfK+qlbk21P0FtILNQ74GfEuxYxUEjYx/sQXE3WnoK7I5qdIqyuvF4t84t+vKSHca+TIi29+GRzh3FK0FkbOSfueO18l+MORocGUSKjymKvkUlsWQdsyerMilBdUGqyHLx2MBkGDOkVOkkCPNCXcLApLk+bSgfBAWAAgFwHTD/04VpL7zmeQj/26MAP4luAkzhI2Jxqkp+EKA7g0HctbOJjJhvRmjMaZuFsXap4zWpMYxGf3z+OX7sH5Qabx59rFT9PV7+1ELgkBPavAsVmfTcTzHI5cCFXKlZ2Ck7oLn0I4KQjcNX8Sce5HMxwJbPOZLdSwGuvPy9C2GGWExZsFm4kM+LLxfq7twn8luZWoRv10DhY/LY0HwmcFOr1GlZg9f5gtUrW/EUNQ/5u7EF+nl2pPXr+KHjSTRmfCRytM8WD1EXrdzC+g4/obJbo0oc66biGLwCdBXCW4zSrjfophdXZ7hYGhY8SJPk+54VZRzr64P2qmyS7eJNZ25PvuRFMQv7zleYx+nPT+PrZhY5KIxFOKfADepWiFYrGc6/Yd3KrG2n9FIJrqdJF9sDfXU16OaCPJtlRLQvPPz1i+CFooUjJEoTgXeu9buUNRl7B2RtxaOpevt/qx077eg==
+  template:
+    metadata:
+      creationTimestamp: null
+      name: backstage-keycloak-catalog
+      namespace: backstage

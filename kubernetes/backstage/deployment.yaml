@@ -27,7 +27,7 @@ spec:
       containers:
         - name: backstage
           # Pinned by commit; bumped when a new image is published.
-          image: ghcr.io/platform-matuuu60/backstage:sha-a7b0ea4d26643bb36e4c06b03649055935a4f806
+          image: ghcr.io/platform-matuuu60/backstage:sha-c8a79df1d731c391a89bdd0000866010fadb3ec2
           ports:
             - name: http
               containerPort: 7007
@@ -56,6 +56,14 @@ spec:
             - name: AUTH_SESSION_SECRET
               valueFrom:
                 secretKeyRef: { name: backstage-auth, key: session-secret }
+            # Catalog sync of users and groups from realm idp (in-cluster admin API).
+            - name: KEYCLOAK_BASE_URL
+              value: http://keycloak.keycloak.svc.cluster.local:8080
+            - name: KEYCLOAK_CATALOG_CLIENT_ID
+              value: backstage-catalog
+            - name: KEYCLOAK_CATALOG_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: backstage-keycloak-catalog, key: client-secret }
           readinessProbe:
             httpGet: { path: /.backstage/health/v1/readiness, port: http }
             periodSeconds: 10
