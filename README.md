@@ -36,12 +36,28 @@ terraform/
   modules/        # reusable modules, identical for every target
   envs/local/     # Floci
   envs/aws/       # real AWS
+examples/         # sample function code used by environments
+scripts/          # host tooling (Floci lifecycle)
+tests/            # smoke tests
 docs/adr/         # architecture decision records
 ```
 
+## Quick start (local)
+
+Requirements: Docker, Terraform >= 1.9, curl.
+
+```bash
+./scripts/floci.sh up                      # Floci on 127.0.0.1:4566
+terraform -chdir=terraform/envs/local init
+terraform -chdir=terraform/envs/local apply
+./tests/smoke-hello-api.sh                 # PASS: ... -> 200 {"message": "Hello, shopco!"}
+```
+
+Known differences between Floci and AWS are tracked in [docs/floci-vs-aws.md](docs/floci-vs-aws.md).
+
 ## Roadmap
 
-- [ ] Phase 1: Terraform against Floci, a Lambda behind API Gateway reachable by URL
+- [x] Phase 1: Terraform against Floci, a Lambda behind API Gateway reachable by URL
 - [ ] Phase 2: ArgoCD + Crossplane `ServerlessApp` API
 - [ ] Phase 3: Public apps via Gateway API + TLS + CloudFront
 - [ ] Phase 4: CI on in-cluster runners + security gate
