@@ -72,7 +72,7 @@ apiVersion: platform.idp.internal/v1alpha1
 kind: ServerlessApp
 metadata:
   name: hello-api
-  namespace: team-shop
+  namespace: team-demo
 spec:
   target: floci
   artifact:
@@ -81,7 +81,7 @@ spec:
 ```
 
 ```bash
-./tests/smoke-serverlessapp.sh team-shop hello-api   # PASS: ... -> 200
+./tests/smoke-serverlessapp.sh team-demo hello-api   # PASS: ... -> 200
 ```
 
 ### Developer portal (Backstage)
