@@ -1,0 +1,14 @@
+# The platform repository scans itself with the same reusable workflow it offers.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: ./.github/workflows/security-scan.yaml
