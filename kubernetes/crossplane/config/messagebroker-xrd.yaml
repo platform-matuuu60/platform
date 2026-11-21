@@ -1,0 +1,44 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: messagebrokers.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: MessageBroker
+    plural: messagebrokers
+  defaultCompositionRef:
+    name: messagebroker-rabbitmq
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: SECRET
+          type: string
+          jsonPath: .status.secretName
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            A message broker on the k3s target (RabbitMQ, AMQP 0.9.1). Connection details are in the secret named in status.secretName (keys: url, host, port, username, password). Reachable only from the same namespace.
+          properties:
+            spec:
+              type: object
+              properties:
+                storage:
+                  type: string
+                  description: Volume for queues and messages.
+                  enum: [1Gi, 2Gi, 5Gi]
+                  default: 1Gi
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: storage is immutable
+            status:
+              type: object
+              properties:
+                secretName:
+                  type: string
+                host:
+                  type: string

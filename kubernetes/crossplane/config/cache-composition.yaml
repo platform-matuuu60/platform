@@ -1,0 +1,184 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: cache-valkey
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: Cache
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $name := printf "%s-cache" $xr.metadata.name }}
+            {{- $host := printf "%s.%s.svc" $name $xr.metadata.namespace }}
+            {{- /* Generate the password once; later renders reuse the stored one. */}}
+            {{- $password := "" }}
+            {{- with getComposedResource . "credentials" }}
+            {{- $password = dig "data" "password" "" . | b64dec }}
+            {{- end }}
+            {{- if not $password }}
+            {{- $password = randAlphaNum 32 }}
+            {{- end }}
+            {{- $sts := getComposedResource . "statefulset" }}
+            {{- $ready := "False" }}
+            {{- if $sts }}
+            {{- if eq (dig "status" "readyReplicas" 0 $sts | int) 1 }}
+            {{- $ready = "True" }}
+            {{- end }}
+            {{- end }}
+            {{- $labels := dict "app.kubernetes.io/name" "valkey" "app.kubernetes.io/instance" $name "backstage.io/kubernetes-id" $xr.metadata.name }}
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: credentials
+                gotemplating.fn.crossplane.io/ready: "True"
+            type: Opaque
+            data:
+              password: {{ $password | b64enc }}
+              host: {{ $host | b64enc }}
+              port: {{ "6379" | b64enc }}
+              url: {{ printf "redis://default:%s@%s:6379/0" $password $host | b64enc }}
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: service
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              selector:
+                app.kubernetes.io/instance: {{ $name }}
+              ports:
+                - name: valkey
+                  port: 6379
+                  targetPort: valkey
+            ---
+            apiVersion: apps/v1
+            kind: StatefulSet
+            metadata:
+              name: {{ $name }}
+              labels:
+                {{- toYaml $labels | nindent 4 }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: statefulset
+                gotemplating.fn.crossplane.io/ready: {{ $ready | quote }}
+            spec:
+              serviceName: {{ $name }}
+              replicas: 1
+              selector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ $name }}
+              template:
+                metadata:
+                  labels:
+                    {{- toYaml $labels | nindent 8 }}
+                spec:
+                  automountServiceAccountToken: false
+                  securityContext:
+                    runAsNonRoot: true
+                    runAsUser: 999
+                    runAsGroup: 1000
+                    fsGroup: 1000
+                    seccompProfile:
+                      type: RuntimeDefault
+                  containers:
+                    - name: valkey
+                      image: valkey/valkey:9.1.4-alpine@sha256:56729e68bdda139cbd3f6a2538683dc3523325fc5711ea1a379938f1b37893f0
+                      args:
+                        - --requirepass
+                        - $(VALKEY_PASSWORD)
+                        - --maxmemory
+                        # Leave headroom under the container limit for Valkey's own overhead.
+                        - {{ printf "%dmb" (div (mul (trimSuffix "Mi" $spec.memory | int) 3) 4) }}
+                        - --maxmemory-policy
+                        - allkeys-lru
+                        {{- if $spec.persistence }}
+                        - --appendonly
+                        - "yes"
+                        {{- else }}
+                        - --save
+                        - ""
+                        {{- end }}
+                      env:
+                        - name: VALKEY_PASSWORD
+                          valueFrom:
+                            secretKeyRef:
+                              name: {{ $name }}
+                              key: password
+                      ports:
+                        - name: valkey
+                          containerPort: 6379
+                      readinessProbe:
+                        tcpSocket:
+                          port: valkey
+                        periodSeconds: 5
+                      resources:
+                        requests:
+                          cpu: 20m
+                          memory: {{ $spec.memory }}
+                        limits:
+                          memory: {{ $spec.memory }}
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                          drop: [ALL]
+                      volumeMounts:
+                        - name: data
+                          mountPath: /data
+                  {{- if not $spec.persistence }}
+                  volumes:
+                    - name: data
+                      emptyDir: {}
+                  {{- end }}
+              {{- if $spec.persistence }}
+              volumeClaimTemplates:
+                - metadata:
+                    name: data
+                  spec:
+                    accessModes: [ReadWriteOnce]
+                    resources:
+                      requests:
+                        storage: 1Gi
+              {{- end }}
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: network-policy
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ $name }}
+              policyTypes: [Ingress]
+              ingress:
+                - from:
+                    - podSelector: {}
+                  ports:
+                    - port: 6379
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: Cache
+            status:
+              secretName: {{ $name }}
+              host: {{ $host }}
+    - step: detect-readiness
+      functionRef:
+        name: function-auto-ready

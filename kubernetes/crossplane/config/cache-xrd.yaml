@@ -1,0 +1,48 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: caches.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: Cache
+    plural: caches
+  defaultCompositionRef:
+    name: cache-valkey
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: SECRET
+          type: string
+          jsonPath: .status.secretName
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            An in-memory cache on the k3s target (Valkey, Redis-compatible). Connection details are in the secret named in status.secretName (keys: url, host, port, password). Reachable only from the same namespace.
+          properties:
+            spec:
+              type: object
+              properties:
+                memory:
+                  type: string
+                  description: Memory limit; Valkey evicts least recently used keys before reaching it.
+                  enum: [64Mi, 128Mi, 256Mi, 512Mi]
+                  default: 128Mi
+                persistence:
+                  type: boolean
+                  description: Keep data across restarts (append-only file on a 1Gi volume).
+                  default: false
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: persistence is immutable
+            status:
+              type: object
+              properties:
+                secretName:
+                  type: string
+                host:
+                  type: string

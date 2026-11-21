@@ -1,0 +1,172 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: messagebroker-rabbitmq
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: MessageBroker
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $name := printf "%s-broker" $xr.metadata.name }}
+            {{- $host := printf "%s.%s.svc" $name $xr.metadata.namespace }}
+            {{- /* Generate the password once; later renders reuse the stored one. */}}
+            {{- $password := "" }}
+            {{- with getComposedResource . "credentials" }}
+            {{- $password = dig "data" "password" "" . | b64dec }}
+            {{- end }}
+            {{- if not $password }}
+            {{- $password = randAlphaNum 32 }}
+            {{- end }}
+            {{- $sts := getComposedResource . "statefulset" }}
+            {{- $ready := "False" }}
+            {{- if $sts }}
+            {{- if eq (dig "status" "readyReplicas" 0 $sts | int) 1 }}
+            {{- $ready = "True" }}
+            {{- end }}
+            {{- end }}
+            {{- $labels := dict "app.kubernetes.io/name" "rabbitmq" "app.kubernetes.io/instance" $name "backstage.io/kubernetes-id" $xr.metadata.name }}
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: credentials
+                gotemplating.fn.crossplane.io/ready: "True"
+            type: Opaque
+            data:
+              username: {{ "app" | b64enc }}
+              password: {{ $password | b64enc }}
+              host: {{ $host | b64enc }}
+              port: {{ "5672" | b64enc }}
+              url: {{ printf "amqp://app:%s@%s:5672/" $password $host | b64enc }}
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: service
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              selector:
+                app.kubernetes.io/instance: {{ $name }}
+              ports:
+                - name: amqp
+                  port: 5672
+                  targetPort: amqp
+                - name: management
+                  port: 15672
+                  targetPort: management
+            ---
+            apiVersion: apps/v1
+            kind: StatefulSet
+            metadata:
+              name: {{ $name }}
+              labels:
+                {{- toYaml $labels | nindent 4 }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: statefulset
+                gotemplating.fn.crossplane.io/ready: {{ $ready | quote }}
+            spec:
+              serviceName: {{ $name }}
+              replicas: 1
+              selector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ $name }}
+              template:
+                metadata:
+                  labels:
+                    {{- toYaml $labels | nindent 8 }}
+                spec:
+                  automountServiceAccountToken: false
+                  securityContext:
+                    runAsNonRoot: true
+                    runAsUser: 100
+                    runAsGroup: 101
+                    fsGroup: 101
+                    seccompProfile:
+                      type: RuntimeDefault
+                  containers:
+                    - name: rabbitmq
+                      image: rabbitmq:4.3.8-management-alpine@sha256:977a6cf07ea9065116aaa40e7dc147ad25621d71a654248d36d79e5e7500be3e
+                      env:
+                        - name: RABBITMQ_DEFAULT_USER
+                          value: app
+                        - name: RABBITMQ_DEFAULT_PASS
+                          valueFrom:
+                            secretKeyRef:
+                              name: {{ $name }}
+                              key: password
+                      ports:
+                        - name: amqp
+                          containerPort: 5672
+                        - name: management
+                          containerPort: 15672
+                      readinessProbe:
+                        exec:
+                          command: [rabbitmq-diagnostics, -q, check_port_connectivity]
+                        initialDelaySeconds: 15
+                        periodSeconds: 15
+                        timeoutSeconds: 10
+                      resources:
+                        requests:
+                          cpu: 50m
+                          memory: 256Mi
+                        limits:
+                          memory: 512Mi
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop: [ALL]
+                      volumeMounts:
+                        - name: data
+                          mountPath: /var/lib/rabbitmq
+              volumeClaimTemplates:
+                - metadata:
+                    name: data
+                  spec:
+                    accessModes: [ReadWriteOnce]
+                    resources:
+                      requests:
+                        storage: {{ $spec.storage }}
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: network-policy
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ $name }}
+              policyTypes: [Ingress]
+              ingress:
+                - from:
+                    - podSelector: {}
+                  ports:
+                    - port: 5672
+                    - port: 15672
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: MessageBroker
+            status:
+              secretName: {{ $name }}
+              host: {{ $host }}
+    - step: detect-readiness
+      functionRef:
+        name: function-auto-ready
