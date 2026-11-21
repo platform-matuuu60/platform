@@ -1,0 +1,59 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: postgresdatabases.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: PostgresDatabase
+    plural: postgresdatabases
+  defaultCompositionRef:
+    name: postgresdatabase-cnpg
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: INSTANCES
+          type: integer
+          jsonPath: .spec.instances
+        - name: SECRET
+          type: string
+          jsonPath: .status.secretName
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            A PostgreSQL database on the k3s target (CloudNativePG). Connection details are in the
+            secret named in status.secretName (keys: uri, host, port, dbname, username, password).
+          properties:
+            spec:
+              type: object
+              properties:
+                instances:
+                  type: integer
+                  description: 1 for development; 2 or 3 add streaming replicas and automatic failover.
+                  minimum: 1
+                  maximum: 3
+                  default: 1
+                storage:
+                  type: string
+                  description: Volume size per instance.
+                  enum: [1Gi, 2Gi, 5Gi, 10Gi]
+                  default: 1Gi
+                database:
+                  type: string
+                  description: Name of the application database and its owner role.
+                  pattern: '^[a-z][a-z0-9_]{0,30}$'
+                  default: app
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: database is immutable
+            status:
+              type: object
+              properties:
+                secretName:
+                  type: string
+                host:
+                  type: string

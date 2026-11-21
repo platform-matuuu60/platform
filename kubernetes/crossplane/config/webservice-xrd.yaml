@@ -1,0 +1,81 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: webservices.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: WebService
+    plural: webservices
+  defaultCompositionRef:
+    name: webservice
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: IMAGE
+          type: string
+          jsonPath: .spec.image
+        - name: URL
+          type: string
+          jsonPath: .status.url
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            An HTTP service on the k3s target. Optional connections to a PostgresDatabase, Cache and
+            MessageBroker of the same namespace are injected as DATABASE_URL, REDIS_URL and AMQP_URL.
+          properties:
+            spec:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  description: Container image with an immutable tag (CI writes it on every release).
+                  pattern: '^[^:@]+(:[A-Za-z0-9_.-]+)?(@sha256:[a-f0-9]{64})?$'
+                port:
+                  type: integer
+                  minimum: 1024
+                  maximum: 65535
+                  default: 8080
+                replicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
+                  default: 1
+                size:
+                  type: string
+                  description: small = 50m/128Mi request, 256Mi limit; medium = 100m/256Mi request, 512Mi limit.
+                  enum: [small, medium]
+                  default: small
+                healthPath:
+                  type: string
+                  description: Path answered with 2xx when the service can take traffic.
+                  default: /healthz
+                public:
+                  type: boolean
+                  description: Publish https://<namespace>-<name>.cloud-it.com.ar through the platform gateway.
+                  default: false
+                connections:
+                  type: object
+                  properties:
+                    database:
+                      type: string
+                      description: Name of a PostgresDatabase in the same namespace.
+                    cache:
+                      type: string
+                      description: Name of a Cache in the same namespace.
+                    broker:
+                      type: string
+                      description: Name of a MessageBroker in the same namespace.
+            status:
+              type: object
+              properties:
+                url:
+                  type: string
+                internalUrl:
+                  type: string
