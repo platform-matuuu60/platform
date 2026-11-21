@@ -27,7 +27,7 @@ spec:
       containers:
         - name: backstage
           # Pinned by commit; bumped when a new image is published.
-          image: ghcr.io/platform-matuuu60/backstage:sha-77d70a2b995706e33ecf4a93156694cf293d6ff4
+          image: ghcr.io/platform-matuuu60/backstage:sha-1a5f6b8f655ab0882cecaa4b074f27b143476e0b
           ports:
             - name: http
               containerPort: 7007
