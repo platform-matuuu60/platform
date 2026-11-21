@@ -1,0 +1,8 @@
+# Accepted risks for trivy (one ID per line, each with its reason).
+
+# terraform/envs/local targets Floci, a local emulator: customer-managed KMS keys add nothing.
+AWS-0132
+
+# Backstage writes caches under its working directory at runtime; a read-only root
+# filesystem needs emptyDir mounts tested first. Follow-up, not ignored forever.
+KSV-0014
