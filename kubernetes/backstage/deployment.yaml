@@ -64,6 +64,17 @@ spec:
             - name: KEYCLOAK_CATALOG_CLIENT_SECRET
               valueFrom:
                 secretKeyRef: { name: backstage-keycloak-catalog, key: client-secret }
+            # GitHub App idp-backstage-platform-matuuu60: the scaffolder creates repos and opens PRs.
+            - name: GITHUB_APP_ID
+              value: "5862755"
+            - name: GITHUB_APP_CLIENT_ID
+              value: Iv23ligMvO5YWw9i7yvQ
+            - name: GITHUB_APP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: backstage-github-app, key: client-secret }
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: backstage-github-app, key: private-key }
           readinessProbe:
             httpGet: { path: /.backstage/health/v1/readiness, port: http }
             periodSeconds: 10
