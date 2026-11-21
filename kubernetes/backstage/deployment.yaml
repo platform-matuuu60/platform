@@ -27,7 +27,7 @@ spec:
       containers:
         - name: backstage
           # Pinned by commit; bumped when a new image is published.
-          image: ghcr.io/platform-matuuu60/backstage:sha-c8a79df1d731c391a89bdd0000866010fadb3ec2
+          image: ghcr.io/platform-matuuu60/backstage:sha-410b855f3bd7367bfdc09086a0b2fd65539bc63e
           ports:
             - name: http
               containerPort: 7007
@@ -64,6 +64,17 @@ spec:
             - name: KEYCLOAK_CATALOG_CLIENT_SECRET
               valueFrom:
                 secretKeyRef: { name: backstage-keycloak-catalog, key: client-secret }
+            # GitHub App idp-backstage-platform-matuuu60: the scaffolder creates repos and opens PRs.
+            - name: GITHUB_APP_ID
+              value: "5862755"
+            - name: GITHUB_APP_CLIENT_ID
+              value: Iv23ligMvO5YWw9i7yvQ
+            - name: GITHUB_APP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: backstage-github-app, key: client-secret }
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: backstage-github-app, key: private-key }
           readinessProbe:
             httpGet: { path: /.backstage/health/v1/readiness, port: http }
             periodSeconds: 10
