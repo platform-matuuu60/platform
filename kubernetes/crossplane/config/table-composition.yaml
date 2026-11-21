@@ -1,0 +1,99 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: table
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: Table
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $ns := $xr.metadata.namespace }}
+            {{- /* AWS names are account-wide, so prefix them with the namespace. */}}
+            {{- $name := printf "%s-%s" $ns $xr.metadata.name }}
+            {{- /* The app composition creates its role with this name in the same namespace. */}}
+            {{- $role := printf "%s-%s" $ns $spec.app }}
+            {{- /* Keep in sync with the table block of the ServerlessApp and ServerlessWorker compositions. */}}
+            {{- $envVar := printf "TABLE_%s" (trimPrefix (printf "%s-" $spec.app) $xr.metadata.name | replace "-" "_" | upper) }}
+            {{- $region := "us-east-1" }}
+            {{- $table := getComposedResource . "table" }}
+            {{- $tableArn := "" }}
+            {{- if $table }}
+            {{- $tableArn = dig "status" "atProvider" "arn" "" $table }}
+            {{- end }}
+            {{- $read := list "dynamodb:DescribeTable" "dynamodb:GetItem" "dynamodb:BatchGetItem" "dynamodb:Query" "dynamodb:Scan" "dynamodb:ConditionCheckItem" }}
+            {{- $write := list "dynamodb:PutItem" "dynamodb:UpdateItem" "dynamodb:DeleteItem" "dynamodb:BatchWriteItem" }}
+            {{- $actions := $read }}
+            {{- if eq $spec.access "readwrite" }}
+            {{- $actions = concat $read $write }}
+            {{- end }}
+            ---
+            apiVersion: dynamodb.aws.m.upbound.io/v1beta1
+            kind: Table
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: table
+            spec:
+              forProvider:
+                region: {{ $region }}
+                billingMode: PAY_PER_REQUEST
+                hashKey: {{ $spec.partitionKey.name }}
+                {{- with $spec.sortKey }}
+                rangeKey: {{ .name }}
+                {{- end }}
+                attribute:
+                  - name: {{ $spec.partitionKey.name }}
+                    type: {{ $spec.partitionKey.type }}
+                  {{- with $spec.sortKey }}
+                  - name: {{ .name }}
+                    type: {{ .type }}
+                  {{- end }}
+                pointInTimeRecovery:
+                  enabled: true
+                serverSideEncryption:
+                  enabled: true
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- if $tableArn }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: RolePolicy
+            metadata:
+              name: {{ $name }}-access
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: access
+            spec:
+              forProvider:
+                roleRef:
+                  name: {{ $role }}
+                policy: |
+                  {{- dict "Version" "2012-10-17" "Statement" (list (dict "Effect" "Allow" "Action" $actions "Resource" (list $tableArn (printf "%s/index/*" $tableArn)))) | toJson | nindent 6 }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- end }}
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: Table
+            status:
+              tableName: {{ $name }}
+              envVar: {{ $envVar }}
+              {{- with $tableArn }}
+              tableArn: {{ . }}
+              {{- end }}
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready

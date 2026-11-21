@@ -1,0 +1,208 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: serverlessworker
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: ServerlessWorker
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $ns := $xr.metadata.namespace }}
+            {{- /* AWS names are account-wide, so prefix them with the namespace. */}}
+            {{- $name := printf "%s-%s" $ns $xr.metadata.name }}
+            {{- $dlqName := printf "%s-dlq" $name }}
+            {{- $region := "us-east-1" }}
+            {{- $dlq := getComposedResource . "dead-letter-queue" }}
+            {{- $dlqArn := "" }}
+            {{- if $dlq }}
+            {{- $dlqArn = dig "status" "atProvider" "arn" "" $dlq }}
+            {{- end }}
+            {{- $queue := getComposedResource . "queue" }}
+            {{- $queueArn := "" }}
+            {{- $queueUrl := "" }}
+            {{- if $queue }}
+            {{- $queueArn = dig "status" "atProvider" "arn" "" $queue }}
+            {{- $queueUrl = dig "status" "atProvider" "url" "" $queue }}
+            {{- end }}
+            {{- /* Tables attached to this worker (kind Table, label platform.idp.internal/app). */}}
+            ---
+            apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+            kind: ExtraResources
+            requirements:
+              tables:
+                apiVersion: platform.idp.internal/v1alpha1
+                kind: Table
+                namespace: {{ $ns }}
+                matchLabels:
+                  platform.idp.internal/app: {{ $xr.metadata.name }}
+            {{- $env := dict }}
+            {{- with .extraResources }}
+            {{- with index . "tables" }}
+            {{- range .items }}
+            {{- $t := .resource }}
+            {{- /* Keep in sync with the Table composition. */}}
+            {{- $key := printf "TABLE_%s" (trimPrefix (printf "%s-" $t.spec.app) $t.metadata.name | replace "-" "_" | upper) }}
+            {{- $_ := set $env $key (printf "%s-%s" $t.metadata.namespace $t.metadata.name) }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            ---
+            apiVersion: sqs.aws.m.upbound.io/v1beta1
+            kind: Queue
+            metadata:
+              name: {{ $dlqName }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: dead-letter-queue
+            spec:
+              forProvider:
+                region: {{ $region }}
+                name: {{ $dlqName }}
+                # Fourteen days, the maximum, to leave time to inspect failed messages.
+                messageRetentionSeconds: 1209600
+                sqsManagedSseEnabled: true
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- /* The main queue waits for the DLQ so it never exists without a redrive policy. */}}
+            {{- if $dlqArn }}
+            ---
+            apiVersion: sqs.aws.m.upbound.io/v1beta1
+            kind: Queue
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: queue
+            spec:
+              forProvider:
+                region: {{ $region }}
+                name: {{ $name }}
+                # AWS recommends at least six times the function timeout.
+                visibilityTimeoutSeconds: {{ mul $spec.timeout 6 }}
+                sqsManagedSseEnabled: true
+                redrivePolicy: {{ dict "deadLetterTargetArn" $dlqArn "maxReceiveCount" $spec.maxReceiveCount | toJson | quote }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- end }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: Role
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: role
+            spec:
+              forProvider:
+                assumeRolePolicy: |
+                  {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: RolePolicyAttachment
+            metadata:
+              name: {{ $name }}-basic-execution
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: basic-execution
+            spec:
+              forProvider:
+                policyArn: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+                roleRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- if $queueArn }}
+            ---
+            apiVersion: iam.aws.m.upbound.io/v1beta1
+            kind: RolePolicy
+            metadata:
+              name: {{ $name }}-consume
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: consume
+            spec:
+              forProvider:
+                roleRef:
+                  name: {{ $name }}
+                # Only this worker's queue: the permissions the SQS event source mapping needs.
+                policy: |
+                  {{- dict "Version" "2012-10-17" "Statement" (list (dict "Effect" "Allow" "Action" (list "sqs:ReceiveMessage" "sqs:DeleteMessage" "sqs:GetQueueAttributes" "sqs:ChangeMessageVisibility") "Resource" $queueArn)) | toJson | nindent 6 }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- end }}
+            ---
+            apiVersion: lambda.aws.m.upbound.io/v1beta1
+            kind: Function
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: function
+            spec:
+              forProvider:
+                region: {{ $region }}
+                runtime: {{ $spec.runtime }}
+                handler: {{ $spec.handler }}
+                memorySize: {{ $spec.memorySize }}
+                timeout: {{ $spec.timeout }}
+                s3Bucket: {{ $spec.artifact.bucket }}
+                s3Key: {{ $spec.artifact.key }}
+                {{- with $env }}
+                environment:
+                  variables:
+                    {{- toYaml . | nindent 8 }}
+                {{- end }}
+                roleRef:
+                  name: {{ $name }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- if $queueArn }}
+            ---
+            apiVersion: lambda.aws.m.upbound.io/v1beta1
+            kind: EventSourceMapping
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: event-source-mapping
+            spec:
+              forProvider:
+                region: {{ $region }}
+                eventSourceArn: {{ $queueArn }}
+                functionNameRef:
+                  name: {{ $name }}
+                batchSize: {{ $spec.batchSize }}
+                # Failed messages are retried alone instead of the whole batch.
+                functionResponseTypes: [ReportBatchItemFailures]
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: {{ $spec.target }}
+            {{- end }}
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: ServerlessWorker
+            status:
+              queueName: {{ $name }}
+              deadLetterQueueName: {{ $dlqName }}
+              {{- with $queueArn }}
+              queueArn: {{ . }}
+              {{- end }}
+              {{- with $queueUrl }}
+              queueUrl: {{ . }}
+              {{- end }}
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready
