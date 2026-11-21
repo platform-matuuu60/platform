@@ -18,16 +18,12 @@ jobs:
     runs-on: idp-k3s
     timeout-minutes: 10
     steps:
+      # CI must use the Service: hitting 172.18.0.1 directly goes through Docker's
+      # DNAT to the container IP, which the runner NetworkPolicy does not allow.
       - name: Floci reachable through its Service
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://floci.floci-system.svc.cluster.local:4566/)
           echo "floci via Service -> HTTP $code"
-          [ "$code" != "000" ]
-
-      - name: Floci reachable on the host bridge
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://172.18.0.1:4566/)
-          echo "floci via 172.18.0.1 -> HTTP $code"
           [ "$code" != "000" ]
 
       - name: Kubernetes API is blocked
