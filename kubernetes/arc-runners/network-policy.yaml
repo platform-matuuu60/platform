@@ -1,0 +1,33 @@
+# Runner pods execute code from pull requests, so they get the least network access
+# that CI needs: DNS, Floci (artifacts and deploys) and the public internet over HTTPS
+# (GitHub, GHCR, package registries). No other in-cluster or private traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runners-least-privilege
+  namespace: arc-runners
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # Floci listens on the host's private Docker gateway (see kubernetes/floci).
+    - to:
+        - ipBlock: { cidr: 172.18.0.1/32 }
+      ports:
+        - { port: 4566, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { port: 443, protocol: TCP }
