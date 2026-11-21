@@ -78,6 +78,9 @@ spec:
                 gotemplating.fn.crossplane.io/ready: {{ $ready | quote }}
             spec:
               serviceName: {{ $name }}
+              # Deleting the claim deletes its data, like PostgresDatabase (CloudNativePG).
+              persistentVolumeClaimRetentionPolicy:
+                whenDeleted: Delete
               replicas: 1
               selector:
                 matchLabels:

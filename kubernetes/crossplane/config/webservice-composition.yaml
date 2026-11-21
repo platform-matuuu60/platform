@@ -1,0 +1,214 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: webservice
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idp.internal/v1alpha1
+    kind: WebService
+  mode: Pipeline
+  pipeline:
+    - step: render-resources
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $name := $xr.metadata.name }}
+            {{- $ns := $xr.metadata.namespace }}
+            {{- $conn := $spec.connections | default dict }}
+            {{- $hostname := printf "%s-%s.cloud-it.com.ar" $ns $name }}
+            {{- $sizes := dict "small" (list "50m" "128Mi" "256Mi") "medium" (list "100m" "256Mi" "512Mi") }}
+            {{- $size := index $sizes $spec.size }}
+            {{- $labels := dict "app.kubernetes.io/name" $name "app.kubernetes.io/part-of" $ns "backstage.io/kubernetes-id" $name }}
+            {{- $deploy := getComposedResource . "deployment" }}
+            {{- $ready := "False" }}
+            {{- if $deploy }}
+            {{- if ge (dig "status" "availableReplicas" 0 $deploy | int) ($spec.replicas | int) }}
+            {{- $ready = "True" }}
+            {{- end }}
+            {{- end }}
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: {{ $name }}
+              labels:
+                {{- toYaml $labels | nindent 4 }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: deployment
+                gotemplating.fn.crossplane.io/ready: {{ $ready | quote }}
+            spec:
+              replicas: {{ $spec.replicas }}
+              revisionHistoryLimit: 3
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ $name }}
+              template:
+                metadata:
+                  labels:
+                    {{- toYaml $labels | nindent 8 }}
+                spec:
+                  automountServiceAccountToken: false
+                  securityContext:
+                    runAsNonRoot: true
+                    runAsUser: 10001
+                    runAsGroup: 10001
+                    seccompProfile:
+                      type: RuntimeDefault
+                  containers:
+                    - name: app
+                      image: {{ $spec.image }}
+                      ports:
+                        - name: http
+                          containerPort: {{ $spec.port }}
+                      env:
+                        - name: PORT
+                          value: {{ $spec.port | quote }}
+                        {{- with $conn.database }}
+                        - name: DATABASE_URL
+                          valueFrom:
+                            secretKeyRef:
+                              # Created by CloudNativePG for the PostgresDatabase.
+                              name: {{ . }}-app
+                              key: uri
+                        {{- end }}
+                        {{- with $conn.cache }}
+                        - name: REDIS_URL
+                          valueFrom:
+                            secretKeyRef:
+                              name: {{ . }}-cache
+                              key: url
+                        {{- end }}
+                        {{- with $conn.broker }}
+                        - name: AMQP_URL
+                          valueFrom:
+                            secretKeyRef:
+                              name: {{ . }}-broker
+                              key: url
+                        {{- end }}
+                      readinessProbe:
+                        httpGet:
+                          path: {{ $spec.healthPath }}
+                          port: http
+                        periodSeconds: 5
+                      livenessProbe:
+                        httpGet:
+                          path: {{ $spec.healthPath }}
+                          port: http
+                        initialDelaySeconds: 10
+                        periodSeconds: 20
+                      resources:
+                        requests:
+                          cpu: {{ index $size 0 }}
+                          memory: {{ index $size 1 }}
+                        limits:
+                          memory: {{ index $size 2 }}
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        readOnlyRootFilesystem: true
+                        capabilities:
+                          drop: [ALL]
+                      volumeMounts:
+                        - name: tmp
+                          mountPath: /tmp
+                  volumes:
+                    - name: tmp
+                      emptyDir: {}
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: {{ $name }}
+              labels:
+                {{- toYaml $labels | nindent 4 }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: service
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              selector:
+                app.kubernetes.io/name: {{ $name }}
+              ports:
+                - name: http
+                  port: 80
+                  targetPort: http
+            {{- if gt ($spec.replicas | int) 1 }}
+            ---
+            apiVersion: policy/v1
+            kind: PodDisruptionBudget
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: pdb
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              maxUnavailable: 1
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ $name }}
+            {{- end }}
+            ---
+            # Same namespace always; the platform gateway only when the service is public.
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: network-policy
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ $name }}
+              policyTypes: [Ingress]
+              ingress:
+                - from:
+                    - podSelector: {}
+                    {{- if $spec.public }}
+                    - namespaceSelector:
+                        matchLabels:
+                          kubernetes.io/metadata.name: envoy-gateway-system
+                      podSelector:
+                        matchLabels:
+                          gateway.envoyproxy.io/owning-gateway-name: eg
+                    {{- end }}
+                  ports:
+                    - port: {{ $spec.port }}
+            {{- if $spec.public }}
+            ---
+            # eg/https serves the *.cloud-it.com.ar wildcard certificate; external-dns publishes the record.
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: {{ $name }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: route
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              parentRefs:
+                - name: eg
+                  namespace: envoy-gateway
+                  sectionName: https
+              hostnames:
+                - {{ $hostname }}
+              rules:
+                - backendRefs:
+                    - name: {{ $name }}
+                      port: 80
+            {{- end }}
+            ---
+            apiVersion: platform.idp.internal/v1alpha1
+            kind: WebService
+            status:
+              internalUrl: http://{{ $name }}.{{ $ns }}.svc
+              {{- if $spec.public }}
+              url: https://{{ $hostname }}
+              {{- end }}
+    - step: detect-readiness
+      functionRef:
+        name: function-auto-ready
