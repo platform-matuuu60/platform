@@ -1,0 +1,91 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: tables.platform.idp.internal
+spec:
+  scope: Namespaced
+  group: platform.idp.internal
+  names:
+    kind: Table
+    plural: tables
+  defaultCompositionRef:
+    name: table
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: APP
+          type: string
+          jsonPath: .spec.app
+        - name: TABLE
+          type: string
+          jsonPath: .status.tableName
+        - name: ENV
+          type: string
+          jsonPath: .status.envVar
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            A key-value table attached to one ServerlessApp or ServerlessWorker in the same namespace.
+            The claim must carry the label platform.idp.internal/app=<spec.app>; the app then receives
+            the table name in the environment variable reported in status.envVar.
+          properties:
+            spec:
+              type: object
+              required:
+                - app
+                - partitionKey
+              properties:
+                target:
+                  type: string
+                  description: Must match the target of the app.
+                  enum: [floci, aws]
+                  default: floci
+                app:
+                  type: string
+                  description: Name of the ServerlessApp or ServerlessWorker that uses the table.
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: app is immutable
+                access:
+                  type: string
+                  description: Permissions granted to the app's function role on this table only.
+                  enum: [read, readwrite]
+                  default: readwrite
+                partitionKey:
+                  type: object
+                  required: [name]
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: partitionKey is immutable
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                      enum: [S, N, B]
+                      default: S
+                sortKey:
+                  type: object
+                  required: [name]
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: sortKey is immutable
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                      enum: [S, N, B]
+                      default: S
+            status:
+              type: object
+              properties:
+                tableName:
+                  type: string
+                tableArn:
+                  type: string
+                envVar:
+                  type: string

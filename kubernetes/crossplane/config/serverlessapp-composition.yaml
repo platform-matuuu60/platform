@@ -29,6 +29,29 @@ spec:
             {{- $apiId = dig "status" "atProvider" "id" "" $api }}
             {{- $executionArn = dig "status" "atProvider" "executionArn" "" $api }}
             {{- end }}
+            {{- $ns := $xr.metadata.namespace }}
+            {{- /* Tables attached to this app (kind Table, label platform.idp.internal/app). */}}
+            ---
+            apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+            kind: ExtraResources
+            requirements:
+              tables:
+                apiVersion: platform.idp.internal/v1alpha1
+                kind: Table
+                namespace: {{ $ns }}
+                matchLabels:
+                  platform.idp.internal/app: {{ $xr.metadata.name }}
+            {{- $env := dict }}
+            {{- with .extraResources }}
+            {{- with index . "tables" }}
+            {{- range .items }}
+            {{- $t := .resource }}
+            {{- /* Keep in sync with the Table composition. */}}
+            {{- $key := printf "TABLE_%s" (trimPrefix (printf "%s-" $t.spec.app) $t.metadata.name | replace "-" "_" | upper) }}
+            {{- $_ := set $env $key (printf "%s-%s" $t.metadata.namespace $t.metadata.name) }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             ---
             apiVersion: iam.aws.m.upbound.io/v1beta1
             kind: Role
@@ -74,6 +97,11 @@ spec:
                 timeout: {{ $spec.timeout }}
                 s3Bucket: {{ $spec.artifact.bucket }}
                 s3Key: {{ $spec.artifact.key }}
+                {{- with $env }}
+                environment:
+                  variables:
+                    {{- toYaml . | nindent 8 }}
+                {{- end }}
                 roleRef:
                   name: {{ $name }}
               providerConfigRef:
